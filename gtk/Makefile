@@ -1,2 +1,2 @@
 default:
-	gcc `pkgconf --cflags --libs gtk+-3.0` -o test main.c && ./test
+	gcc -nostartfiles `pkgconf --cflags --libs gtk4` -o test main.c `pkg-config --libs gtk4` && ./test
