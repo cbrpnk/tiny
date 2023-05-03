@@ -1,41 +1,25 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <math.h>
+// Taken from math.h
+#define M_E   2.7182818284590452354
+#define M_PI  3.14159265358979323846
 
 #define BUFFER_SIZE 4096
 #define CHANNEL_COUNT 2
 
-#define MIN(a, b) (a) < (b) ? (a) : (b)
-#define MAX(a, b) (a) > (b) ? (a) : (b)
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 float m_exp(float a) {
-    //return pow(M_E, a);
-    float floor_a = (int) a;
-    float fract_a = a - floor_a;
-    float res = M_E;
-    for(int i=0; i<floor_a-1; ++i) {
-        res *= M_E;
+    float res = 1;
+    int n = 100;
+    for(int i=0; i<n; ++i) {
+        res *= (1 + a/n);
     }
-    return res * (1 + fract_a*(1+(fract_a/2)*(1 + (fract_a/3) * (1 + fract_a/4))));
+    return res;
 }
 
 float env(float time, float release) {
     return 1.0f/m_exp(time*release);
 }
-
-/*
-float m_fmod(float x, float y) {
-    register long double value;
-    __asm __volatile__(
-        "1: fprem\n\t"
-        "fnstsw    %%ax\n\t"
-        "sahf\n\t"
-        "jp    1b"
-        : "=t" (value) : "0" (x), "u" (y) : "ax", "cc"
-    );
-    return value;
-}
-*/
 
 float m_sin(float x) {
     float ret;
@@ -75,20 +59,29 @@ float drum(float time) {
 }
 
 float last = 0.;
-float lead(float time) {
-    float f = 30 * (2 * (int)((time*2, 3))) * (int)(modulo(time*4+(int)(m_sin(time)), 4));
-    time = modulo(time, .5);
-    float mod3 = osc(time, f*120, last*.5) * .2;
-    float mod2 = tan_h(osc(time, f*16, mod3)) * 3;
-    float mod1 = osc(time, f*2, mod2) * 10;
+float do_bass(float time) {
+    float t = time;
+    float f = 200 * (int)(modulo(time*2+(int)(m_sin(time)), 2)) * m_sin(t*.1);
+    //time = modulo(time, MAX(.8, m_sin(t)*2.));
+    time = modulo(time, MAX(.2, m_sin(tan_h(time*4))*.5)*.5);
+    float mod3 = osc(time, f*2, last*.2) * .1;
+    float mod2 = tan_h(osc(time, f*2, mod3)*.15) * m_sin(t);
+    float mod1 = osc(time, f*2, mod2) * 8 * m_sin(t*8+M_PI);
     
-    float pitch_env = env(time, 10.0f);
-    last = tan_h(osc(time, 60, env(time, 10) + mod1) * env(time, 20) * 100.);
+    last = tan_h(osc(time, 50, env(time, 10) * mod1) * env(time, 25) * 30.);
     return last;
 }
 
+float do_lead(float time) {
+    time += tan_h(((m_sin(time*32)*.25+1)*.1))*.1 + 1;
+    float o1 = osc(time, 1000, 0);
+    float o2 = osc(time, 3000, o1*20);
+    float o3 = osc(time, 4000, o2);
+    return (o1*.2 + o2*.2 + o3*.2) * env(modulo(time, .16), 25);
+}
+
 float do_clap(float time) {
-    return noise() * env(modulo(time+.5, 1.), 20);
+    return tan_h(noise() * env(modulo(time+.5, 1.), 20) * 2.);
 }
 
 float do_hihat(float time) {
@@ -97,22 +90,19 @@ float do_hihat(float time) {
 }
 
 void play(float time, float *left, float *right) {
+    time += tan_h(((m_sin(time*16)*.5+.5)*.03))*.2 + 1;
+    time = modulo(time, 8)+1;
     float kick = drum(modulo(time, .5));
+    float bass = do_bass(time) * .25;
     
-    float l = lead(time) * .25;
-    /*
-    float d = delay_read(2);
-    delay_write(l);
-    l = -.5 *l + .2 * d;
-    */
     
+    float lead = do_lead(time) * .25;
     float clap = do_clap(time);
     float hihat = do_hihat(time);
     
-    // no drums
-    float lead_pass = MIN((int)(time/8), 1.);
+    float intro = time > 8;
     
-    float mix = (kick + hihat + clap) * lead_pass + l;
+    float mix = (kick + bass + hihat + lead);
     
     *left = mix;
     *right = mix;
